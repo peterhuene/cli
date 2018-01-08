@@ -17,6 +17,7 @@ namespace Microsoft.DotNet.Tools.Install.Tool
             FilePath projectPath,
             DirectoryPath assetJsonOutput,
             FilePath? nugetconfig,
+            string source,
             IEnumerable<string> forwardedArguments)
         {
             var argsToPassToRestore = new List<string>()
@@ -30,6 +31,12 @@ namespace Microsoft.DotNet.Tools.Install.Tool
             {
                 argsToPassToRestore.Add("--configfile");
                 argsToPassToRestore.Add(nugetconfig.Value.Value);
+            }
+
+            if (source != null)
+            {
+                argsToPassToRestore.Add("--source");
+                argsToPassToRestore.Add(source);
             }
 
             if (forwardedArguments != null)

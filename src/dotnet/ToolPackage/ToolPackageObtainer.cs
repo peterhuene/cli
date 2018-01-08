@@ -37,6 +37,7 @@ namespace Microsoft.DotNet.ToolPackage
             string packageVersion = null,
             FilePath? nugetconfig = null,
             string targetframework = null,
+            string source = null,
             IEnumerable<string> forwardedArguments = null)
         {
             if (packageId == null)
@@ -76,7 +77,7 @@ namespace Microsoft.DotNet.ToolPackage
                     packageId);
             }
 
-            _projectRestorer.Restore(tempProjectPath, toolDirectory, nugetconfig, forwardedArguments);
+            _projectRestorer.Restore(tempProjectPath, toolDirectory, nugetconfig, source, forwardedArguments);
 
             if (packageVersionOrPlaceHolder.IsPlaceholder)
             {

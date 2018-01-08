@@ -21,6 +21,7 @@ namespace Microsoft.DotNet.Tools.Install.Tool
         private static string _packageVersion;
         private static string _configFilePath;
         private static string _framework;
+        private static string _source;
         private static IEnumerable<string> _forwardedArguments;
 
         public InstallToolCommand(
@@ -37,6 +38,7 @@ namespace Microsoft.DotNet.Tools.Install.Tool
             _packageVersion = appliedCommand.ValueOrDefault<string>("version");
             _configFilePath = appliedCommand.ValueOrDefault<string>("configfile");
             _framework = appliedCommand.ValueOrDefault<string>("framework");
+            _source = appliedCommand.ValueOrDefault<string>("source");
             _forwardedArguments = appliedCommand.OptionValuesToBeForwarded();
         }
 
@@ -108,6 +110,7 @@ namespace Microsoft.DotNet.Tools.Install.Tool
                 packageVersion: _packageVersion,
                 nugetconfig: configFile,
                 targetframework: _framework,
+                source: _source,
                 forwardedArguments: _forwardedArguments);
         }
     }

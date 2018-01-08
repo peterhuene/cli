@@ -12,6 +12,7 @@ namespace Microsoft.DotNet.ToolPackage
             FilePath projectPath,
             DirectoryPath assetJsonOutput, 
             FilePath? nugetconfig,
+            string source,
             IEnumerable<string> forwardedArguments);
     }
 }
