@@ -11,9 +11,8 @@ namespace Microsoft.DotNet.Cli
         {
             return Create.Command("tool",
                 "Install tool",
-                Accept.ExactlyOneArgument(o => "packageId")
-                    .With(name: "packageId",
-                        description: "Package Id in NuGet"),
+                Accept.ExactlyOneArgument(o => "Please specify one tool Package Id to install.")
+                    .With(name: "packageId", description: "NuGet Package Id of the tool to install."),
                 Create.Option(
                     "--version",
                     "Version of the package in NuGet",
@@ -26,7 +25,8 @@ namespace Microsoft.DotNet.Cli
                     "-f|--framework",
                     "Target framework to publish for. The target framework has to be specified in the project file.",
                     Accept.ExactlyOneArgument()),
-                CommonOptions.HelpOption());
+                CommonOptions.HelpOption(),
+                CommonOptions.VerbosityOption());
         }
     }
 }

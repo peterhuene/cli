@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 
 namespace Microsoft.DotNet.ToolPackage
 {
@@ -14,31 +15,29 @@ namespace Microsoft.DotNet.ToolPackage
         {
             if (string.IsNullOrWhiteSpace(commandName))
             {
-                throw new ArgumentNullException(nameof(commandName), "Cannot be null or whitespace");
+                throw new ToolConfigurationException("Command name cannot be null or whitespace.");
             }
-
-            EnsureNoInvalidFilenameCharacters(commandName, nameof(toolAssemblyEntryPoint));
 
             if (string.IsNullOrWhiteSpace(toolAssemblyEntryPoint))
             {
-                throw new ArgumentNullException(nameof(toolAssemblyEntryPoint), "Cannot be null or whitespace");
+                throw new ToolConfigurationException("Tool assembly entry point cannot be null or whitespace.");
             }
+
+            EnsureNoInvalidFilenameCharacters(commandName);
 
             CommandName = commandName;
             ToolAssemblyEntryPoint = toolAssemblyEntryPoint;
         }
 
-        private void EnsureNoInvalidFilenameCharacters(string commandName, string nameOfParam)
+        private void EnsureNoInvalidFilenameCharacters(string commandName)
         {
-            char[] invalidCharactors = Path.GetInvalidFileNameChars();
-            if (commandName.IndexOfAny(invalidCharactors) != -1)
+            var invalidCharacters = Path.GetInvalidFileNameChars();
+            if (commandName.IndexOfAny(invalidCharacters) != -1)
             {
-                throw new ArgumentException(
-                    paramName: nameof(nameOfParam),
-                    message: "Contains one or more invalid characters: " + new string(invalidCharactors));
+                throw new ToolConfigurationException(
+                    $"Command '{commandName}' contains one or more of the following invalid characters: {string.Join(", ", invalidCharacters.Select(c => $"'{c}'"))}.");
             }
         }
-
 
         public string CommandName { get; }
         public string ToolAssemblyEntryPoint { get; }

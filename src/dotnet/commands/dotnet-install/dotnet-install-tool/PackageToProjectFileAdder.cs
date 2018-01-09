@@ -18,7 +18,7 @@ namespace Microsoft.DotNet.Tools.Install.Tool
                 throw new ArgumentNullException(nameof(packageId));
             }
 
-            var argsToPassToRestore = new List<string>
+            var argsToPassToAdd = new List<string>
             {
                 projectPath.Value,
                 "package",
@@ -27,22 +27,15 @@ namespace Microsoft.DotNet.Tools.Install.Tool
             };
 
             var command = new DotNetCommandFactory(alwaysRunOutOfProc: true)
-                .Create(
-                    "add",
-                    argsToPassToRestore)
+                .Create("add", argsToPassToAdd)
                 .CaptureStdOut()
                 .CaptureStdErr();
 
             var result = command.Execute();
             if (result.ExitCode != 0)
             {
-                throw new PackageObtainException("Failed to add package. " +
-                                                 $"{Environment.NewLine}WorkingDirectory: " +
-                                                 result.StartInfo.WorkingDirectory + 
-                                                 $"{Environment.NewLine}Arguments: " +
-                                                 result.StartInfo.Arguments + 
-                                                 $"{Environment.NewLine}Output: " +
-                                                 result.StdErr + result.StdOut);
+                throw new PackageObtainException(
+                    $"Failed to add tool package '{packageId}' to project: {result.StdErr}.");
             }
         }
     }

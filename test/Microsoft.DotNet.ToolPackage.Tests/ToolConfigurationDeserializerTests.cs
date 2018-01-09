@@ -28,7 +28,7 @@ namespace Microsoft.DotNet.ToolPackage.Tests
             Action a = () => ToolConfigurationDeserializer.Deserialize("DotnetToolSettingsMalformed.xml");
             a.ShouldThrow<ToolConfigurationException>()
                 .And.Message.Should()
-                .Contain("The tool's settings file is invalid xml");
+                .Contain("The tool's settings file is invalid XML");
         }
 
         [Fact]
@@ -37,16 +37,17 @@ namespace Microsoft.DotNet.ToolPackage.Tests
             Action a = () => ToolConfigurationDeserializer.Deserialize("DotnetToolSettingsMissing.xml");
             a.ShouldThrow<ToolConfigurationException>()
                 .And.Message.Should()
-                .Contain("The tool's settings file contains error");
+                .Contain("Command name cannot be null or whitespace");
         }
 
         [Fact]
         public void GivenInvalidCharAsFileNameItThrows()
         {
-            Action a = () => new ToolConfiguration("na\0me", "my.dll");
-            a.ShouldThrow<ArgumentException>()
+            var name = "na\0me";
+            Action a = () => new ToolConfiguration(name, "my.dll");
+            a.ShouldThrow<ToolConfigurationException>()
                 .And.Message.Should()
-                .Contain("Contains one or more invalid characters");
+                .Contain($"Command '{name}' contains one or more of the following invalid characters");
         }
     }
 }

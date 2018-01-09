@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Microsoft.DotNet.Cli;
@@ -20,6 +21,7 @@ namespace Microsoft.DotNet.Tools.Install.Tool
         private static string _packageVersion;
         private static string _configFilePath;
         private static string _framework;
+        private static IEnumerable<string> _forwardedArguments;
 
         public InstallToolCommand(
             AppliedOption appliedCommand,
@@ -35,6 +37,7 @@ namespace Microsoft.DotNet.Tools.Install.Tool
             _packageVersion = appliedCommand.ValueOrDefault<string>("version");
             _configFilePath = appliedCommand.ValueOrDefault<string>("configfile");
             _framework = appliedCommand.ValueOrDefault<string>("framework");
+            _forwardedArguments = appliedCommand.OptionValuesToBeForwarded();
         }
 
         public override int Execute()
@@ -48,83 +51,64 @@ namespace Microsoft.DotNet.Tools.Install.Tool
 
             var executablePackagePath = new DirectoryPath(new CliFolderPathCalculator().ExecutablePackagesPath);
 
-            var toolConfigurationAndExecutableDirectory = ObtainPackage(
-                _packageId,
-                _packageVersion,
-                configFile,
-                _framework,
-                executablePackagePath);
-
-            DirectoryPath executable = toolConfigurationAndExecutableDirectory
-                .ExecutableDirectory
-                .WithSubDirectories(
-                    toolConfigurationAndExecutableDirectory
-                        .Configuration
-                        .ToolAssemblyEntryPoint);
-
-            var shellShimMaker = new ShellShimMaker(executablePackagePath.Value);
-            var commandName = toolConfigurationAndExecutableDirectory.Configuration.CommandName;
-            shellShimMaker.EnsureCommandNameUniqueness(commandName);
-
-            shellShimMaker.CreateShim(
-                executable.Value,
-                commandName);
-
-            EnvironmentPathFactory
-                .CreateEnvironmentPathInstruction()
-                .PrintAddPathInstructionIfPathDoesNotExist();
-
-            Reporter.Output.WriteLine(
-                $"{Environment.NewLine}The installation succeeded. If there is no other instruction. You can type the following command in shell directly to invoke: {commandName}");
-
-            return 0;
-        }
-
-        private static ToolConfigurationAndExecutableDirectory ObtainPackage(
-            string packageId,
-            string packageVersion,
-            FilePath? configFile,
-            string framework,
-            DirectoryPath executablePackagePath)
-        {
             try
             {
-                var toolPackageObtainer =
-                    new ToolPackageObtainer(
-                        executablePackagePath,
-                        () => new DirectoryPath(Path.GetTempPath())
-                            .WithSubDirectories(Path.GetRandomFileName())
-                            .WithFile(Path.GetRandomFileName() + ".csproj"),
-                        new Lazy<string>(BundledTargetFramework.GetTargetFrameworkMoniker),
-                        new PackageToProjectFileAdder(),
-                        new ProjectRestorer());
+                var toolConfigurationAndExecutableDirectory = ObtainPackage(configFile, executablePackagePath);
 
-                return toolPackageObtainer.ObtainAndReturnExecutablePath(
-                    packageId: packageId,
-                    packageVersion: packageVersion,
-                    nugetconfig: configFile,
-                    targetframework: framework);
+                DirectoryPath executable = toolConfigurationAndExecutableDirectory
+                    .ExecutableDirectory
+                    .WithSubDirectories(
+                        toolConfigurationAndExecutableDirectory
+                            .Configuration
+                            .ToolAssemblyEntryPoint);
+
+                var shellShimMaker = new ShellShimMaker(executablePackagePath.Value);
+                var commandName = toolConfigurationAndExecutableDirectory.Configuration.CommandName;
+                shellShimMaker.EnsureCommandNameUniqueness(commandName);
+
+                shellShimMaker.CreateShim(
+                    executable.Value,
+                    commandName);
+
+                EnvironmentPathFactory
+                    .CreateEnvironmentPathInstruction()
+                    .PrintAddPathInstructionIfPathDoesNotExist();
+
+                Reporter.Output.WriteLine(
+                    $"{Environment.NewLine}The installation succeeded. If there is no other instruction. You can type the following command in shell directly to invoke: {commandName}");
             }
             catch (PackageObtainException ex)
             {
-                throw new GracefulException(
-                    message:
-                    $"Install failed. Failed to download package:{Environment.NewLine}" +
-                    $"NuGet returned:{Environment.NewLine}" +
-                    $"{Environment.NewLine}" +
-                    $"{ex.Message}",
-                    innerException: ex);
+                Reporter.Error.WriteLine($"Tool installation failed: {ex.Message}");
+                return -1;
             }
             catch (ToolConfigurationException ex)
             {
-                throw new GracefulException(
-                    message:
-                    $"Install failed. The settings file in the tool's NuGet package is not valid. Please contact the owner of the NuGet package.{Environment.NewLine}" +
-                    $"The error was:{Environment.NewLine}" +
-                    $"{Environment.NewLine}" +
-                    $"{ex.Message}",
-                    innerException: ex);
+                Reporter.Error.WriteLine($"Tool installation failed: {ex.Message}");
+                Reporter.Error.WriteLine("Please contact the tool author for assistance.");
+                return -1;
             }
+            return 0;
+        }
+
+        private static ToolConfigurationAndExecutableDirectory ObtainPackage(FilePath? configFile, DirectoryPath executablePackagePath)
+        {
+            var toolPackageObtainer =
+                new ToolPackageObtainer(
+                    executablePackagePath,
+                    () => new DirectoryPath(Path.GetTempPath())
+                        .WithSubDirectories(Path.GetRandomFileName())
+                        .WithFile(Path.GetRandomFileName() + ".csproj"),
+                    new Lazy<string>(BundledTargetFramework.GetTargetFrameworkMoniker),
+                    new PackageToProjectFileAdder(),
+                    new ProjectRestorer());
+
+            return toolPackageObtainer.ObtainAndReturnExecutablePath(
+                packageId: _packageId,
+                packageVersion: _packageVersion,
+                nugetconfig: configFile,
+                targetframework: _framework,
+                forwardedArguments: _forwardedArguments);
         }
     }
 }

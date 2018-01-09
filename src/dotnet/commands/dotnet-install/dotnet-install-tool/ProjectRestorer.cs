@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.DotNet.Cli;
 using Microsoft.DotNet.ToolPackage;
 using Microsoft.DotNet.PlatformAbstractions;
@@ -15,9 +16,14 @@ namespace Microsoft.DotNet.Tools.Install.Tool
         public void Restore(
             FilePath projectPath,
             DirectoryPath assetJsonOutput,
-            FilePath? nugetconfig)
+            FilePath? nugetconfig,
+            IEnumerable<string> forwardedArguments)
         {
-            var argsToPassToRestore = new List<string>();
+            var argsToPassToRestore = new List<string>()
+            {
+                "--runtime",
+                RuntimeEnvironment.GetRuntimeIdentifier()
+            };
 
             argsToPassToRestore.Add(projectPath.Value);
             if (nugetconfig != null)
@@ -26,30 +32,25 @@ namespace Microsoft.DotNet.Tools.Install.Tool
                 argsToPassToRestore.Add(nugetconfig.Value.Value);
             }
 
-            argsToPassToRestore.AddRange(new List<string>
+            if (forwardedArguments != null)
             {
-                "--runtime",
-                RuntimeEnvironment.GetRuntimeIdentifier(),
-                $"/p:BaseIntermediateOutputPath={assetJsonOutput.ToQuotedString()}"
-            });
+                argsToPassToRestore.AddRange(forwardedArguments);
+            }
+
+            if (!argsToPassToRestore.Any(a => a.StartsWith("/verbosity:")))
+            {
+                argsToPassToRestore.Add("/verbosity:quiet");
+            }
+
+            argsToPassToRestore.Add($"/p:BaseIntermediateOutputPath={assetJsonOutput.ToQuotedString()}");
 
             var command = new DotNetCommandFactory(alwaysRunOutOfProc: true)
-                .Create(
-                    "restore",
-                    argsToPassToRestore)
-                .CaptureStdOut()
-                .CaptureStdErr();
+                .Create("restore", argsToPassToRestore);
 
             var result = command.Execute();
             if (result.ExitCode != 0)
             {
-                throw new PackageObtainException("Failed to restore package. " +
-                                                 $"{Environment.NewLine}WorkingDirectory: " +
-                                                 result.StartInfo.WorkingDirectory +
-                                                 $"{Environment.NewLine}Arguments: " +
-                                                 result.StartInfo.Arguments +
-                                                 $"{Environment.NewLine}Output: " +
-                                                 result.StdErr + result.StdOut);
+                throw new PackageObtainException($"Failed to restore project {projectPath}.");
             }
         }
     }

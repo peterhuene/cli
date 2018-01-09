@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -35,7 +36,8 @@ namespace Microsoft.DotNet.ToolPackage
             string packageId,
             string packageVersion = null,
             FilePath? nugetconfig = null,
-            string targetframework = null)
+            string targetframework = null,
+            IEnumerable<string> forwardedArguments = null)
         {
             if (packageId == null)
             {
@@ -74,7 +76,7 @@ namespace Microsoft.DotNet.ToolPackage
                     packageId);
             }
 
-            InvokeRestore(nugetconfig: nugetconfig, tempProjectPath: tempProjectPath, individualToolVersion: toolDirectory);
+            _projectRestorer.Restore(tempProjectPath, toolDirectory, nugetconfig, forwardedArguments);
 
             if (packageVersionOrPlaceHolder.IsPlaceholder)
             {
@@ -129,14 +131,6 @@ namespace Microsoft.DotNet.ToolPackage
                 ToolConfigurationDeserializer.Deserialize(toolConfigurationPath.Value);
 
             return toolConfiguration;
-        }
-
-        private void InvokeRestore(
-            FilePath? nugetconfig,
-            FilePath tempProjectPath,
-            DirectoryPath individualToolVersion)
-        {
-            _projectRestorer.Restore(tempProjectPath, individualToolVersion, nugetconfig);
         }
 
         private FilePath CreateTempProject(

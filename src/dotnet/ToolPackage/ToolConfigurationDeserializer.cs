@@ -28,8 +28,7 @@ namespace Microsoft.DotNet.ToolPackage
                 catch (InvalidOperationException e) when (e.InnerException is XmlException)
                 {
                     throw new ToolConfigurationException(
-                        $"The tool's settings file is invalid xml. {Environment.NewLine}" +
-                        e.InnerException.Message);
+                        $"The tool's settings file is invalid XML: {e.InnerException.Message}");
                 }
             }
 
@@ -42,7 +41,7 @@ namespace Microsoft.DotNet.ToolPackage
             if (dotNetCliTool.Commands[0].Runner != "dotnet")
             {
                 throw new ToolConfigurationException(
-                    "The tool's settings file has non \"dotnet\" as runner.");
+                    $"The tool's settings file defines command '{dotNetCliTool.Commands[0].Name}' with unsupported runner '{dotNetCliTool.Commands[0].Runner}'.");
             }
 
             var commandName = dotNetCliTool.Commands[0].Name;
@@ -52,9 +51,9 @@ namespace Microsoft.DotNet.ToolPackage
             {
                 return new ToolConfiguration(commandName, toolAssemblyEntryPoint);
             }
-            catch (ArgumentException e)
+            catch (ToolConfigurationException ex)
             {
-                throw new ToolConfigurationException($"The tool's settings file contains error {Environment.NewLine}" + e.Message);
+                throw new ToolConfigurationException($"The tool's settings file is invalid: {ex.Message}");
             }
         }
     }
