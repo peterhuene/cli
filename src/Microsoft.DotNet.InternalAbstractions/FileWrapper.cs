@@ -46,6 +46,14 @@ namespace Microsoft.Extensions.EnvironmentAbstractions
             File.WriteAllText(path, content);
         }
 
+        public void WriteAllBytes(string path, Stream stream)
+        {
+            using (var output = File.Create(path))
+            {
+                stream.CopyTo(output);
+            }
+        }
+
         public void Move(string source, string destination)
         {
             File.Move(source, destination);

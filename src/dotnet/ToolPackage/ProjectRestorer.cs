@@ -15,7 +15,7 @@ namespace Microsoft.DotNet.ToolPackage
     {
         private IReporter _reporter;
 
-        public ProjectRestorer(IReporter reporter)
+        public ProjectRestorer(IReporter reporter = null)
         {
             _reporter = reporter;
         }

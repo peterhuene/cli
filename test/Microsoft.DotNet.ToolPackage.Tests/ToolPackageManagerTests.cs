@@ -11,7 +11,6 @@ using Microsoft.DotNet.Tools.Test.Utilities;
 using Microsoft.DotNet.Cli;
 using Microsoft.DotNet.Cli.Utils;
 using Microsoft.DotNet.Tools;
-using Microsoft.DotNet.Tools.Tests.ComponentMocks;
 using Microsoft.Extensions.EnvironmentAbstractions;
 using Xunit;
 
@@ -19,40 +18,12 @@ namespace Microsoft.DotNet.ToolPackage.Tests
 {
     public class ToolPackageManagerTests : TestBase
     {
-        [Fact]
-        public void GivenAPackageIdTheRootShouldBeASubdirectoryOfToolsPath()
+        private IFileSystem _fileSystem;
+
+        public ToolPackageManagerTests()
         {
-            var reporter = new BufferedReporter();
-
-            var toolsPath = Path.Combine(Directory.GetCurrentDirectory(), Path.GetRandomFileName());
-
-            var packageManager = new ToolPackageManager(
-                new DirectoryPath(toolsPath),
-                new ProjectRestorer(reporter));
-
-            packageManager
-                .GetPackageRootDirectory(TestPackageId)
-                .Value
-                .Should()
-                .Be(Path.Combine(toolsPath, TestPackageId));
-        }
-
-        [Fact]
-        public void GivenAPackageIdThePackageDirectoryShouldContainTheVersion()
-        {
-            var reporter = new BufferedReporter();
-
-            var toolsPath = Path.Combine(Directory.GetCurrentDirectory(), Path.GetRandomFileName());
-
-            var packageManager = new ToolPackageManager(
-                new DirectoryPath(toolsPath),
-                new ProjectRestorer(reporter));
-
-            packageManager
-                .GetPackageDirectory(TestPackageId, TestPackageVersion)
-                .Value
-                .Should()
-                .Be(Path.Combine(toolsPath, TestPackageId, TestPackageVersion));
+            _fileSystem = FileSystemMockBuilder.Create().Build();
+            _fileSystem.Directory.CreateDirectory(Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar));
         }
 
         [Fact]
@@ -61,9 +32,7 @@ namespace Microsoft.DotNet.ToolPackage.Tests
             var reporter = new BufferedReporter();
             var toolsPath = Path.Combine(Directory.GetCurrentDirectory(), Path.GetRandomFileName());
 
-            var packageManager = new ToolPackageManager(
-                new DirectoryPath(toolsPath),
-                new ProjectRestorer(reporter));
+            var packageManager = CreateToolPackageManager(toolsPath, reporter);
 
             Action a = () => packageManager.InstallPackage(
                 packageId: TestPackageId,
@@ -98,7 +67,6 @@ namespace Microsoft.DotNet.ToolPackage.Tests
             reporter.Lines.Should().BeEmpty();
 
             installedVersion.Should().Be(TestPackageVersion);
-            packageManager.GetInstalledVersions(TestPackageId).Should().Equal(TestPackageVersion);
 
             var configuration = packageManager.GetToolConfiguration(TestPackageId, installedVersion);
 
@@ -136,7 +104,6 @@ namespace Microsoft.DotNet.ToolPackage.Tests
             reporter.Lines.Should().BeEmpty();
 
             installedVersion.Should().Be(TestPackageVersion);
-            packageManager.GetInstalledVersions(TestPackageId).Should().Equal(TestPackageVersion);
 
             var configuration = packageManager.GetToolConfiguration(TestPackageId, installedVersion);
 
@@ -175,7 +142,6 @@ namespace Microsoft.DotNet.ToolPackage.Tests
             reporter.Lines.Should().BeEmpty();
 
             installedVersion.Should().Be(TestPackageVersion);
-            packageManager.GetInstalledVersions(TestPackageId).Should().Equal(TestPackageVersion);
 
             var configuration = packageManager.GetToolConfiguration(TestPackageId, installedVersion);
 
@@ -210,7 +176,6 @@ namespace Microsoft.DotNet.ToolPackage.Tests
             reporter.Lines.Should().BeEmpty();
 
             installedVersion.Should().Be(TestPackageVersion);
-            packageManager.GetInstalledVersions(TestPackageId).Should().Equal(TestPackageVersion);
 
             var configuration = packageManager.GetToolConfiguration(TestPackageId, installedVersion);
 
@@ -276,7 +241,6 @@ namespace Microsoft.DotNet.ToolPackage.Tests
                 offlineFeedPath: new DirectoryPath("no such path"));
 
             installedVersion.Should().Be(TestPackageVersion);
-            packageManager.GetInstalledVersions(TestPackageId).Should().Equal(TestPackageVersion);
 
             reporter.Lines.Should().BeEmpty();
 
@@ -311,7 +275,6 @@ namespace Microsoft.DotNet.ToolPackage.Tests
             reporter.Lines.Should().BeEmpty();
 
             installedVersion.Should().Be(TestPackageVersion);
-            packageManager.GetInstalledVersions(TestPackageId).Should().Equal(TestPackageVersion);
 
             var configuration = packageManager.GetToolConfiguration(TestPackageId, installedVersion);
 
@@ -370,7 +333,6 @@ namespace Microsoft.DotNet.ToolPackage.Tests
             reporter.Lines.Should().BeEmpty();
 
             installedVersion.Should().Be(TestPackageVersion);
-            packageManager.GetInstalledVersions(TestPackageId).Should().Equal(TestPackageVersion);
 
             var configuration = packageManager.GetToolConfiguration(TestPackageId, installedVersion);
 
@@ -473,7 +435,7 @@ namespace Microsoft.DotNet.ToolPackage.Tests
 
             a.ShouldThrow<ToolPackageException>();
 
-            AssertInstallRollBack(toolsPath);
+            AssertRollBack(toolsPath);
         }
 
         [Theory]
@@ -505,7 +467,7 @@ namespace Microsoft.DotNet.ToolPackage.Tests
 
             a.ShouldThrow<GracefulException>();
 
-            AssertInstallRollBack(toolsPath);
+            AssertRollBack(toolsPath);
         }
 
         [Theory]
@@ -543,7 +505,7 @@ namespace Microsoft.DotNet.ToolPackage.Tests
 
             a.ShouldThrow<ToolPackageException>();
 
-            AssertInstallRollBack(toolsPath);
+            AssertRollBack(toolsPath);
         }
 
         [Theory]
@@ -583,151 +545,7 @@ namespace Microsoft.DotNet.ToolPackage.Tests
                 .Should().BeEmpty("nothing in stage folder, already rolled back");
         }
 
-        [Theory]
-        [InlineData(false)]
-        [InlineData(true)]
-        public void GivenANonexistentPackageGetToolConfigurationThrows(bool testMockBehaviorIsInSync)
-        {
-            var reporter = new BufferedReporter();
-            var toolsPath = Path.Combine(Directory.GetCurrentDirectory(), Path.GetRandomFileName());
-
-            var packageManager =
-                ConstructDefaultPackageManager(toolsPath, reporter, testMockBehaviorIsInSync);
-
-            var packageId = "does.not.exist";
-
-            Action a = () => {
-                packageManager.GetToolConfiguration(packageId, TestPackageVersion);
-            };
-
-            a.ShouldThrow<ToolPackageException>()
-             .And
-             .Message
-             .Should()
-             .StartWith(string.Format(
-                CommonLocalizableStrings.FailedToRetrieveToolConfiguration,
-                packageId,
-                ""));
-        }
-
-        [Theory]
-        [InlineData(false)]
-        [InlineData(true)]
-        public void GivenANonexistentPackageUninstallDoesNotThrow(bool testMockBehaviorIsInSync)
-        {
-            var reporter = new BufferedReporter();
-            var toolsPath = Path.Combine(Directory.GetCurrentDirectory(), Path.GetRandomFileName());
-
-            var packageManager =
-                ConstructDefaultPackageManager(toolsPath, reporter, testMockBehaviorIsInSync);
-
-            var packageId = "does.not.exist";
-
-            packageManager.GetInstalledVersions(packageId).Should().BeEmpty();
-
-            packageManager.UninstallPackage(packageId, TestPackageVersion);
-
-            packageManager.GetInstalledVersions(packageId).Should().BeEmpty();
-        }
-
-        [Theory]
-        [InlineData(false)]
-        [InlineData(true)]
-        public void GivenAnInstalledPackageUninstallRemovesThePackage(bool testMockBehaviorIsInSync)
-        {
-            var reporter = new BufferedReporter();
-            FilePath nugetConfigPath = WriteNugetConfigFileToPointToTheFeed();
-            var toolsPath = Path.Combine(Directory.GetCurrentDirectory(), Path.GetRandomFileName());
-
-            var packageManager =
-                ConstructDefaultPackageManager(toolsPath, reporter, testMockBehaviorIsInSync, nugetConfigPath.Value);
-
-            var installedVersion = packageManager.InstallPackage(
-                packageId: TestPackageId,
-                packageVersion: TestPackageVersion,
-                targetFramework: _testTargetframework,
-                tempProjectPath: GetUniqueTempProjectPathEachTest(),
-                offlineFeedPath: new DirectoryPath("no such path"),
-                nugetConfig: nugetConfigPath);
-
-            reporter.Lines.Should().BeEmpty();
-
-            installedVersion.Should().Be(TestPackageVersion);
-            packageManager.GetInstalledVersions(TestPackageId).Should().Equal(TestPackageVersion);
-
-            packageManager.UninstallPackage(TestPackageId, installedVersion);
-
-            packageManager.GetInstalledVersions(TestPackageId).Should().BeEmpty();
-        }
-
-        [Theory]
-        [InlineData(false)]
-        [InlineData(true)]
-        public void GivenAnInstalledPackageUninstallRollsbackWhenTransactionAborts(bool testMockBehaviorIsInSync)
-        {
-            var reporter = new BufferedReporter();
-            FilePath nugetConfigPath = WriteNugetConfigFileToPointToTheFeed();
-            var toolsPath = Path.Combine(Directory.GetCurrentDirectory(), Path.GetRandomFileName());
-
-            var packageManager =
-                ConstructDefaultPackageManager(toolsPath, reporter, testMockBehaviorIsInSync, nugetConfigPath.Value);
-
-            var installedVersion = packageManager.InstallPackage(
-                packageId: TestPackageId,
-                packageVersion: TestPackageVersion,
-                targetFramework: _testTargetframework,
-                tempProjectPath: GetUniqueTempProjectPathEachTest(),
-                offlineFeedPath: new DirectoryPath("no such path"),
-                nugetConfig: nugetConfigPath);
-
-            reporter.Lines.Should().BeEmpty();
-
-            installedVersion.Should().Be(TestPackageVersion);
-            packageManager.GetInstalledVersions(TestPackageId).Should().Equal(TestPackageVersion);
-
-            using (var scope = new TransactionScope())
-            {
-                packageManager.UninstallPackage(TestPackageId, installedVersion);
-            }
-
-            packageManager.GetInstalledVersions(TestPackageId).Should().Equal(TestPackageVersion);
-        }
-
-        [Theory]
-        [InlineData(false)]
-        [InlineData(true)]
-        public void GivenAnInstalledPackageUninstallRemovesThePackageWhenTransactionCommits(bool testMockBehaviorIsInSync)
-        {
-            var reporter = new BufferedReporter();
-            FilePath nugetConfigPath = WriteNugetConfigFileToPointToTheFeed();
-            var toolsPath = Path.Combine(Directory.GetCurrentDirectory(), Path.GetRandomFileName());
-
-            var packageManager =
-                ConstructDefaultPackageManager(toolsPath, reporter, testMockBehaviorIsInSync, nugetConfigPath.Value);
-
-            var installedVersion = packageManager.InstallPackage(
-                packageId: TestPackageId,
-                packageVersion: TestPackageVersion,
-                targetFramework: _testTargetframework,
-                tempProjectPath: GetUniqueTempProjectPathEachTest(),
-                offlineFeedPath: new DirectoryPath("no such path"),
-                nugetConfig: nugetConfigPath);
-
-            reporter.Lines.Should().BeEmpty();
-
-            installedVersion.Should().Be(TestPackageVersion);
-            packageManager.GetInstalledVersions(TestPackageId).Should().Equal(TestPackageVersion);
-
-            using (var scope = new TransactionScope())
-            {
-                packageManager.UninstallPackage(TestPackageId, installedVersion);
-                scope.Complete();
-            }
-
-            packageManager.GetInstalledVersions(TestPackageId).Should().BeEmpty();
-        }
-
-        private static void AssertInstallRollBack(string toolsPath)
+        private static void AssertRollBack(string toolsPath)
         {
             if (!Directory.Exists(toolsPath))
             {
@@ -752,63 +570,72 @@ namespace Microsoft.DotNet.ToolPackage.Tests
             return tempProjectPath;
         };
 
-        private static IToolPackageManager ConstructDefaultPackageManager(
-            string toolsPath,
-            IReporter reporter,
-            bool testMockBehaviorIsInSync = false,
-            string addNugetConfigFeedWithFilePath = null,
-            string addSourceFeedWithFilePath = null)
+        private static IToolPackageManager CreateToolPackageManager(string toolsPath, IReporter reporter)
         {
-            if (testMockBehaviorIsInSync)
-            {
-                if (addNugetConfigFeedWithFilePath != null)
-                {
-                    return new ToolPackageManagerMock(additionalFeeds:
-                        new List<MockFeed>
-                        {
-                            new MockFeed
-                            {
-                                Type = MockFeedType.ExplicitNugetConfig,
-                                Uri = addNugetConfigFeedWithFilePath,
-                                Packages = new List<MockFeedPackage>
-                                {
-                                    new MockFeedPackage
-                                    {
-                                        PackageId = TestPackageId,
-                                        Version = TestPackageVersion
-                                    }
-                                }
-                            }
-                        }, toolsPath: toolsPath);
-                }
-
-                if (addSourceFeedWithFilePath != null)
-                {
-                    return new ToolPackageManagerMock(additionalFeeds:
-                        new List<MockFeed>
-                        {
-                            new MockFeed
-                            {
-                                Type = MockFeedType.Source,
-                                Uri = addSourceFeedWithFilePath,
-                                Packages = new List<MockFeedPackage>
-                                {
-                                    new MockFeedPackage
-                                    {
-                                        PackageId = TestPackageId,
-                                        Version = TestPackageVersion
-                                    }
-                                }
-                            }
-                        },
-                        toolsPath: toolsPath);
-                }
-
-                return new ToolPackageManagerMock(toolsPath: toolsPath);
-            }
-
-            return new ToolPackageManager(new DirectoryPath(toolsPath), new ProjectRestorer(reporter));
+            // TODO: mock restorer
+            return new ToolPackageManager(
+                new DirectoryPath(toolsPath),
+                new ProjectRestorer(reporter),
+                _fileSystem);
         }
+
+        // private static IToolPackageManager ConstructDefaultPackageManager(
+        //     string toolsPath,
+        //     IReporter reporter,
+        //     bool testMockBehaviorIsInSync = false,
+        //     string addNugetConfigFeedWithFilePath = null,
+        //     string addSourceFeedWithFilePath = null)
+        // {
+        //     if (testMockBehaviorIsInSync)
+        //     {
+        //         if (addNugetConfigFeedWithFilePath != null)
+        //         {
+        //             return new ToolPackageManagerMock(additionalFeeds:
+        //                 new List<MockFeed>
+        //                 {
+        //                     new MockFeed
+        //                     {
+        //                         Type = MockFeedType.ExplicitNugetConfig,
+        //                         Uri = addNugetConfigFeedWithFilePath,
+        //                         Packages = new List<MockFeedPackage>
+        //                         {
+        //                             new MockFeedPackage
+        //                             {
+        //                                 PackageId = TestPackageId,
+        //                                 Version = TestPackageVersion
+        //                             }
+        //                         }
+        //                     }
+        //                 }, toolsPath: toolsPath);
+        //         }
+
+        //         if (addSourceFeedWithFilePath != null)
+        //         {
+        //             return new ToolPackageManagerMock(additionalFeeds:
+        //                 new List<MockFeed>
+        //                 {
+        //                     new MockFeed
+        //                     {
+        //                         Type = MockFeedType.Source,
+        //                         Uri = addSourceFeedWithFilePath,
+        //                         Packages = new List<MockFeedPackage>
+        //                         {
+        //                             new MockFeedPackage
+        //                             {
+        //                                 PackageId = TestPackageId,
+        //                                 Version = TestPackageVersion
+        //                             }
+        //                         }
+        //                     }
+        //                 },
+        //                 toolsPath: toolsPath);
+        //         }
+
+        //         return new ToolPackageManagerMock(toolsPath: toolsPath);
+        //     }
+
+        //     return new ToolPackageManager(new DirectoryPath(toolsPath), new ProjectRestorer(reporter));
+        // }
 
         private static FilePath WriteNugetConfigFileToPointToTheFeed()
         {

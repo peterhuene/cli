@@ -21,11 +21,18 @@ namespace Microsoft.DotNet.ShellShim
         private const string LauncherExeResourceName = "Microsoft.DotNet.Tools.Launcher.Executable";
         private const string LauncherConfigResourceName = "Microsoft.DotNet.Tools.Launcher.Config";
 
-        private readonly DirectoryPath _shimsDirectory;
+        private DirectoryPath _shimsDirectory;
+        private IFileSystem _fileSystem;
+        private IFilePermissions _filePermissions;
 
-        public ShellShimManager(DirectoryPath shimsDirectory)
+        public ShellShimManager(
+            DirectoryPath shimsDirectory,
+            IFileSystem fileSystem = null,
+            IFilePermissions filePermissions = null)
         {
             _shimsDirectory = shimsDirectory;
+            _fileSystem = fileSystem ?? FileSystemWrapper.Default;
+            _filePermissions = filePermissions ?? new FilePermissions();
         }
 
         public void CreateShim(FilePath targetExecutablePath, string commandName)
@@ -43,24 +50,24 @@ namespace Microsoft.DotNet.ShellShim
             {
                 throw new ShellShimException(
                     string.Format(
-                        CommonLocalizableStrings.ShellShimConflict,
+                        CommonLocalizableStrings.ShellShimAlreadyExists,
                         commandName));
             }
 
             try
             {
-                if (!Directory.Exists(_shimsDirectory.Value))
+                if (!_fileSystem.Directory.Exists(_shimsDirectory.Value))
                 {
-                    Directory.CreateDirectory(_shimsDirectory.Value);
+                    _fileSystem.Directory.CreateDirectory(_shimsDirectory.Value);
                 }
 
                 using (var scope = new TransactionScope())
                 {
                     TransactionEnlistment.Enlist(
                         rollback: () => {
-                            foreach (var file in GetShimFiles(commandName).Where(f => File.Exists(f.Value)))
+                            foreach (var file in GetShimFiles(commandName).Where(f => _fileSystem.File.Exists(f.Value)))
                             {
-                                File.Delete(file.Value);
+                                _fileSystem.File.Delete(file.Value);
                             }
                         });
 
@@ -71,10 +78,9 @@ namespace Microsoft.DotNet.ShellShim
                             entryPoint: targetExecutablePath,
                             runner: "dotnet");
 
-                        using (var shim = File.Create(GetWindowsShimPath(commandName).Value))
                         using (var resource = typeof(ShellShimManager).Assembly.GetManifestResourceStream(LauncherExeResourceName))
                         {
-                            resource.CopyTo(shim);
+                            _fileSystem.File.WriteAllBytes(GetWindowsShimPath(commandName).Value, resource);
                         }
                     }
                     else
@@ -84,9 +90,14 @@ namespace Microsoft.DotNet.ShellShim
                         script.AppendLine($"dotnet {targetExecutablePath.ToQuotedString()} \"$@\"");
 
                         var shimPath = GetPosixShimPath(commandName);
-                        File.WriteAllText(shimPath.Value, script.ToString());
+                        _fileSystem.File.WriteAllText(shimPath.Value, script.ToString());
 
-                        SetUserExecutionPermission(shimPath);
+                        var errorMessage = _filePermissions.SetUserExecutionPermission(shimPath);
+                        if (errorMessage != null)
+                        {
+                            throw new ShellShimException(
+                                string.Format(CommonLocalizableStrings.FailedSettingShimPermissions, errorMessage));
+                        }
                     }
 
                     scope.Complete();
@@ -115,20 +126,20 @@ namespace Microsoft.DotNet.ShellShim
                         commit: () => {
                             foreach (var value in files.Values)
                             {
-                                File.Delete(value);
+                                _fileSystem.File.Delete(value);
                             }
                         },
                         rollback: () => {
                             foreach (var kvp in files)
                             {
-                                File.Move(kvp.Value, kvp.Key);
+                                _fileSystem.File.Move(kvp.Value, kvp.Key);
                             }
                         });
 
-                    foreach (var file in GetShimFiles(commandName).Where(f => File.Exists(f.Value)))
+                    foreach (var file in GetShimFiles(commandName).Where(f => _fileSystem.File.Exists(f.Value)))
                     {
                         var tempPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-                        File.Move(file.Value, tempPath);
+                        _fileSystem.File.Move(file.Value, tempPath);
                         files[file.Value] = tempPath;
                     }
 
@@ -149,7 +160,7 @@ namespace Microsoft.DotNet.ShellShim
 
         public bool ShimExists(string commandName)
         {
-            return GetShimFiles(commandName).Any(p => File.Exists(p.Value));
+            return GetShimFiles(commandName).Any(p => _fileSystem.File.Exists(p.Value));
         }
 
         internal void CreateConfigFile(FilePath outputPath, FilePath entryPoint, string runner)
@@ -197,26 +208,6 @@ namespace Microsoft.DotNet.ShellShim
         private FilePath GetWindowsConfigPath(string commandName)
         {
             return new FilePath(GetWindowsShimPath(commandName) + ".config");
-        }
-
-        private static void SetUserExecutionPermission(FilePath path)
-        {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                return;
-            }
-
-            CommandResult result = new CommandFactory()
-                .Create("chmod", new[] { "u+x", path.Value })
-                .CaptureStdOut()
-                .CaptureStdErr()
-                .Execute();
-
-            if (result.ExitCode != 0)
-            {
-                throw new ShellShimException(
-                    string.Format(CommonLocalizableStrings.FailedSettingShimPermissions, result.StdErr));
-            }
         }
     }
 }

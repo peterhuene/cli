@@ -49,6 +49,11 @@ namespace Microsoft.DotNet.ShellShim.Tests
             _files[path] = content;
         }
 
+        public void WriteAllBytes(string path, Stream stream)
+        {
+            throw new NotImplementedException();
+        }
+
         public void Move(string source, string destination)
         {
             throw new NotImplementedException();

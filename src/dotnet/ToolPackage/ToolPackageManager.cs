@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -19,13 +19,15 @@ namespace Microsoft.DotNet.ToolPackage
         private const string ToolSettingsFileName = "DotnetToolSettings.xml";
         private const string StagingDirectory = ".stage";
 
-        private readonly IProjectRestorer _projectRestorer;
-        private readonly DirectoryPath _toolsPath;
+        private DirectoryPath _toolsPath;
+        private IProjectRestorer _projectRestorer;
+        private IFileSystem _fileSystem;
 
-        public ToolPackageManager(DirectoryPath toolsPath, IProjectRestorer projectRestorer)
+        public ToolPackageManager(DirectoryPath toolsPath, IProjectRestorer projectRestorer = null, IFileSystem fileSystem = null)
         {
             _toolsPath = toolsPath;
-            _projectRestorer = projectRestorer ?? throw new ArgumentNullException(nameof(projectRestorer));
+            _projectRestorer = projectRestorer ?? new ProjectRestorer();
+            _fileSystem = fileSystem ?? FileSystemWrapper.Default;
         }
 
         public DirectoryPath GetPackageRootDirectory(string packageId)
@@ -65,7 +67,7 @@ namespace Microsoft.DotNet.ToolPackage
                 throw new ArgumentNullException(nameof(packageId));
             }
 
-            if (nugetConfig != null && !File.Exists(nugetConfig.Value.Value))
+            if (nugetConfig != null && !_fileSystem.File.Exists(nugetConfig.Value.Value))
             {
                 throw new ToolPackageException(
                     string.Format(
@@ -91,21 +93,21 @@ namespace Microsoft.DotNet.ToolPackage
                     string rollbackDirectory = null;
                     TransactionEnlistment.Enlist(
                         rollback: () => {
-                            if (!string.IsNullOrEmpty(rollbackDirectory) && Directory.Exists(rollbackDirectory))
+                            if (!string.IsNullOrEmpty(rollbackDirectory) && _fileSystem.Directory.Exists(rollbackDirectory))
                             {
-                                Directory.Delete(rollbackDirectory, true);
+                                _fileSystem.Directory.Delete(rollbackDirectory, true);
                             }
 
                             // Delete the root if it is empty
-                            if (Directory.Exists(packageRootDirectory) &&
-                                !Directory.EnumerateFileSystemEntries(packageRootDirectory).Any())
+                            if (_fileSystem.Directory.Exists(packageRootDirectory) &&
+                                !_fileSystem.Directory.EnumerateFileSystemEntries(packageRootDirectory).Any())
                             {
-                                Directory.Delete(packageRootDirectory, false);
+                                _fileSystem.Directory.Delete(packageRootDirectory, false);
                             }
                         });
 
                     var stageDirectory = _toolsPath.WithSubDirectories(StagingDirectory, Path.GetRandomFileName());
-                    Directory.CreateDirectory(stageDirectory.Value);
+                    _fileSystem.Directory.CreateDirectory(stageDirectory.Value);
                     rollbackDirectory = stageDirectory.Value;
 
                     CreateTempProject(
@@ -120,11 +122,11 @@ namespace Microsoft.DotNet.ToolPackage
                     _projectRestorer.Restore(tempProjectPath.Value, stageDirectory, nugetConfig, source, verbosity);
 
                     packageVersion = Path.GetFileName(
-                        Directory.EnumerateDirectories(
+                        _fileSystem.Directory.EnumerateDirectories(
                             stageDirectory.WithSubDirectories(packageId).Value).Single());
 
                     var packageDirectory = GetPackageDirectory(packageId, packageVersion);
-                    if (Directory.Exists(packageDirectory.Value))
+                    if (_fileSystem.Directory.Exists(packageDirectory.Value))
                     {
                         throw new ToolPackageException(
                             string.Format(
@@ -133,8 +135,8 @@ namespace Microsoft.DotNet.ToolPackage
                                 packageVersion));
                     }
 
-                    Directory.CreateDirectory(packageRootDirectory);
-                    Directory.Move(stageDirectory.Value, packageDirectory.Value);
+                    _fileSystem.Directory.CreateDirectory(packageRootDirectory);
+                    _fileSystem.Directory.Move(stageDirectory.Value, packageDirectory.Value);
                     rollbackDirectory = packageDirectory.Value;
 
                     scope.Complete();
@@ -160,12 +162,12 @@ namespace Microsoft.DotNet.ToolPackage
             }
 
             var packageRootDirectory = GetPackageRootDirectory(packageId);
-            if (!Directory.Exists(packageRootDirectory.Value))
+            if (!_fileSystem.Directory.Exists(packageRootDirectory.Value))
             {
                 yield break;
             }
 
-            foreach (var subdirectory in Directory.EnumerateDirectories(packageRootDirectory.Value))
+            foreach (var subdirectory in _fileSystem.Directory.EnumerateDirectories(packageRootDirectory.Value))
             {
                 yield return Path.GetFileName(subdirectory);
             }
@@ -259,28 +261,28 @@ namespace Microsoft.DotNet.ToolPackage
                         commit: () => {
                             if (tempPackageDirectory != null)
                             {
-                                Directory.Delete(tempPackageDirectory, true);
+                                _fileSystem.Directory.Delete(tempPackageDirectory, true);
                             }
                         },
                         rollback: () => {
                             if (tempPackageDirectory != null)
                             {
-                                Directory.CreateDirectory(packageRootDirectory.Value);
-                                Directory.Move(tempPackageDirectory, packageDirectory.Value);
+                                _fileSystem.Directory.CreateDirectory(packageRootDirectory.Value);
+                                _fileSystem.Directory.Move(tempPackageDirectory, packageDirectory.Value);
                             }
                         });
 
-                    if (Directory.Exists(packageDirectory.Value))
+                    if (_fileSystem.Directory.Exists(packageDirectory.Value))
                     {
                         var tempPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-                        Directory.Move(packageDirectory.Value, tempPath);
+                        _fileSystem.Directory.Move(packageDirectory.Value, tempPath);
                         tempPackageDirectory = tempPath;
                     }
 
-                    if (Directory.Exists(packageRootDirectory.Value) &&
-                       !Directory.EnumerateFileSystemEntries(packageRootDirectory.Value).Any())
+                    if (_fileSystem.Directory.Exists(packageRootDirectory.Value) &&
+                       !_fileSystem.Directory.EnumerateFileSystemEntries(packageRootDirectory.Value).Any())
                     {
-                        Directory.Delete(packageRootDirectory.Value, false);
+                        _fileSystem.Directory.Delete(packageRootDirectory.Value, false);
                     }
 
                     scope.Complete();
@@ -319,7 +321,7 @@ namespace Microsoft.DotNet.ToolPackage
             DirectoryPath restoreDirectory,
             DirectoryPath offlineFeedPath)
         {
-            Directory.CreateDirectory(tempProjectPath.GetDirectoryPath().Value);
+            _fileSystem.Directory.CreateDirectory(tempProjectPath.GetDirectoryPath().Value);
 
             var tempProjectContent = new XDocument(
                 new XElement("Project",
@@ -332,7 +334,7 @@ namespace Microsoft.DotNet.ToolPackage
                         new XElement("DisableImplicitFrameworkReferences", "true"), // no Microsoft.NETCore.App in tool folder
                         new XElement("RestoreFallbackFolders", "clear"), // do not use fallbackfolder, tool package need to be copied to tool folder
                         new XElement("RestoreAdditionalProjectSources", // use fallbackfolder as feed to enable offline
-                            Directory.Exists(offlineFeedPath.Value) ? offlineFeedPath.Value : string.Empty),
+                            _fileSystem.Directory.Exists(offlineFeedPath.Value) ? offlineFeedPath.Value : string.Empty),
                         new XElement("RestoreAdditionalProjectFallbackFolders", string.Empty), // block other
                         new XElement("RestoreAdditionalProjectFallbackFoldersExcludes", string.Empty),  // block other
                         new XElement("DisableImplicitNuGetFallbackFolder", "true")),  // disable SDK side implicit NuGetFallbackFolder
@@ -343,7 +345,7 @@ namespace Microsoft.DotNet.ToolPackage
                             ))
                         ));
 
-            File.WriteAllText(tempProjectPath.Value, tempProjectContent.ToString());
+            _fileSystem.File.WriteAllText(tempProjectPath.Value, tempProjectContent.ToString());
         }
     }
 }

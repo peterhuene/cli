@@ -56,7 +56,7 @@ namespace Microsoft.DotNet.Tools.Install.Tool
 
             var cliFolderPathCalculator = new CliFolderPathCalculator();
             _toolPackageManager = toolPackageManager ?? new ToolPackageManager(
-                new DirectoryPath(cliFolderPathCalculator.ToolsPackagePath),
+                new DirectoryPath(cliFolderPathCalculator.ToolsPackagePath)
                 new ProjectRestorer(reporter));
 
             _environmentPathInstruction = environmentPathInstruction

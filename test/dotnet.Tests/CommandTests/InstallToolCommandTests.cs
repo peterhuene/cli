@@ -12,7 +12,6 @@ using Microsoft.DotNet.Cli.Utils;
 using Microsoft.DotNet.ToolPackage;
 using Microsoft.DotNet.Tools;
 using Microsoft.DotNet.Tools.Install.Tool;
-using Microsoft.DotNet.Tools.Tests.ComponentMocks;
 using Microsoft.DotNet.Tools.Test.Utilities;
 using Microsoft.Extensions.DependencyModel.Tests;
 using Microsoft.Extensions.EnvironmentAbstractions;
@@ -22,7 +21,7 @@ using Parser = Microsoft.DotNet.Cli.Parser;
 using LocalizableStrings = Microsoft.DotNet.Tools.Install.Tool.LocalizableStrings;
 using System.Runtime.InteropServices;
 
-namespace Microsoft.DotNet.Tests.Commands
+namespace Microsoft.DotNet.Tests.CommandTests
 {
     public class InstallToolCommandTests
     {
@@ -60,8 +59,7 @@ namespace Microsoft.DotNet.Tests.Commands
                 _parseResult,
                 _toolPackageManagerMock,
                 _shellShimManagerMock,
-                _environmentPathInstructionMock,
-                _reporter);
+                _environmentPathInstructionMock);
 
             installToolCommand.Execute().Should().Be(0);
 
@@ -101,8 +99,7 @@ namespace Microsoft.DotNet.Tests.Commands
                     }
                 }),
                 _shellShimManagerMock,
-                _environmentPathInstructionMock,
-                _reporter);
+                _environmentPathInstructionMock);
 
             installToolCommand.Execute().Should().Be(0);
 
@@ -122,8 +119,7 @@ namespace Microsoft.DotNet.Tests.Commands
                 _parseResult,
                 _toolPackageManagerMock,
                 _shellShimManagerMock,
-                _environmentPathInstructionMock,
-                _reporter);
+                _environmentPathInstructionMock);
 
             installToolCommand.Execute().Should().Be(0);
 
@@ -204,7 +200,7 @@ namespace Microsoft.DotNet.Tests.Commands
                 .Should()
                 .Contain(
                     string.Format(
-                        CommonLocalizableStrings.ShellShimConflict,
+                        CommonLocalizableStrings.ShellShimAlreadyExists,
                         ToolPackageManagerMock.FakeCommandName));
 
             _fileSystemWrapper.Directory.Exists(Path.Combine(PathToPlacePackages, PackageId)).Should().BeFalse();
@@ -258,13 +254,12 @@ namespace Microsoft.DotNet.Tests.Commands
 
             _reporter
                 .Lines
-                .Single()
-                .Should()
+                .Single().Should()
                 .Contain(string.Format(
                     LocalizableStrings.InstallationSucceeded,
-                    ToolPackageManagerMock.FakeCommandName,
+                    "SimulatorCommand",
                     PackageId,
-                    PackageVersion));
+                    "1.0.4"));
         }
 
         private static string ExpectedCommandPath()
