@@ -21,31 +21,27 @@ using Xunit.Abstractions;
 
 namespace Microsoft.DotNet.ShellShim.Tests
 {
-    public class ShellShimMakerTests : TestBase
+    public class ShellShimManagerTests : TestBase
     {
         private readonly ITestOutputHelper _output;
 
-        public ShellShimMakerTests(ITestOutputHelper output)
+        public ShellShimManagerTests(ITestOutputHelper output)
         {
             _output = output;
         }
 
-        [Theory]
+        [WindowsOnlyTheory]
         [InlineData("my_native_app.exe", null)]
         [InlineData("./my_native_app.js", "nodejs")]
         [InlineData(@"C:\tools\my_native_app.dll", "dotnet")]
         public void GivenAnRunnerOrEntryPointItCanCreateConfig(string entryPointPath, string runner)
         {
-            var entryPoint = new FilePath(entryPointPath);
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                return;
-
             var cleanFolderUnderTempRoot = GetNewCleanFolderUnderTempRoot();
-            var shellShimMaker = new ShellShimMaker(cleanFolderUnderTempRoot);
+            var shellShimManager = new ShellShimManager(new DirectoryPath(cleanFolderUnderTempRoot));
 
             var tmpFile = new FilePath(Path.Combine(cleanFolderUnderTempRoot, Path.GetRandomFileName()));
 
-            shellShimMaker.CreateConfigFile(tmpFile, entryPoint, runner);
+            shellShimManager.CreateConfigFile(tmpFile, new FilePath(entryPointPath), runner);
 
             new FileInfo(tmpFile.Value).Should().Exist();
 
@@ -56,7 +52,7 @@ namespace Microsoft.DotNet.ShellShim.Tests
                 .Should()
                 .Contain(e => e.Attribute("key").Value == "runner" && e.Attribute("value").Value == (runner ?? string.Empty))
                 .And
-                .Contain(e => e.Attribute("key").Value == "entryPoint" && e.Attribute("value").Value == entryPoint.Value);
+                .Contain(e => e.Attribute("key").Value == "entryPoint" && e.Attribute("value").Value == entryPointPath);
         }
 
         [Fact]
@@ -65,10 +61,10 @@ namespace Microsoft.DotNet.ShellShim.Tests
             var outputDll = MakeHelloWorldExecutableDll();
 
             var cleanFolderUnderTempRoot = GetNewCleanFolderUnderTempRoot();
-            var shellShimMaker = new ShellShimMaker(cleanFolderUnderTempRoot);
-            var shellCommandName = nameof(ShellShimMakerTests) + Path.GetRandomFileName();
+            var shellShimManager = new ShellShimManager(new DirectoryPath(cleanFolderUnderTempRoot));
+            var shellCommandName = nameof(ShellShimManagerTests) + Path.GetRandomFileName();
 
-            shellShimMaker.CreateShim(outputDll, shellCommandName);
+            shellShimManager.CreateShim(outputDll, shellCommandName);
 
             var stdOut = ExecuteInShell(shellCommandName, cleanFolderUnderTempRoot);
 
@@ -81,12 +77,12 @@ namespace Microsoft.DotNet.ShellShim.Tests
             var outputDll = MakeHelloWorldExecutableDll();
 
             var cleanFolderUnderTempRoot = GetNewCleanFolderUnderTempRoot();
-            var shellShimMaker = new ShellShimMaker(cleanFolderUnderTempRoot);
-            var shellCommandName = nameof(ShellShimMakerTests) + Path.GetRandomFileName();
+            var shellShimManager = new ShellShimManager(new DirectoryPath(cleanFolderUnderTempRoot));
+            var shellCommandName = nameof(ShellShimManagerTests) + Path.GetRandomFileName();
 
             using (var transactionScope = new TransactionScope())
             {
-                shellShimMaker.CreateShim(outputDll, shellCommandName);
+                shellShimManager.CreateShim(outputDll, shellCommandName);
                 transactionScope.Complete();
             }
 
@@ -100,10 +96,10 @@ namespace Microsoft.DotNet.ShellShim.Tests
         {
             var outputDll = MakeHelloWorldExecutableDll();
             var extraNonExistDirectory = Path.GetRandomFileName();
-            var shellShimMaker = new ShellShimMaker(Path.Combine(TempRoot.Root, extraNonExistDirectory));
-            var shellCommandName = nameof(ShellShimMakerTests) + Path.GetRandomFileName();
+            var shellShimManager = new ShellShimManager(new DirectoryPath(Path.Combine(TempRoot.Root, extraNonExistDirectory)));
+            var shellCommandName = nameof(ShellShimManagerTests) + Path.GetRandomFileName();
 
-            Action a = () => shellShimMaker.CreateShim(outputDll, shellCommandName);
+            Action a = () => shellShimManager.CreateShim(outputDll, shellCommandName);
 
             a.ShouldNotThrow<DirectoryNotFoundException>();
         }
@@ -117,10 +113,10 @@ namespace Microsoft.DotNet.ShellShim.Tests
             var outputDll = MakeHelloWorldExecutableDll();
 
             var cleanFolderUnderTempRoot = GetNewCleanFolderUnderTempRoot();
-            var shellShimMaker = new ShellShimMaker(cleanFolderUnderTempRoot);
-            var shellCommandName = nameof(ShellShimMakerTests) + Path.GetRandomFileName();
+            var shellShimManager = new ShellShimManager(new DirectoryPath(cleanFolderUnderTempRoot));
+            var shellCommandName = nameof(ShellShimManagerTests) + Path.GetRandomFileName();
 
-            shellShimMaker.CreateShim(outputDll, shellCommandName);
+            shellShimManager.CreateShim(outputDll, shellCommandName);
 
             var stdOut = ExecuteInShell(shellCommandName, cleanFolderUnderTempRoot, arguments);
 
@@ -133,27 +129,23 @@ namespace Microsoft.DotNet.ShellShim.Tests
         [Theory]
         [InlineData(false)]
         [InlineData(true)]
-        public void GivenAnExecutablePathWithExistingSameNameShimItThrows(bool testMockBehaviorIsInSync)
+        public void GivenAnExistingExecutablePathItShouldReportItExists(bool testMockBehaviorIsInSync)
         {
-            var shellCommandName = nameof(ShellShimMakerTests) + Path.GetRandomFileName();
+            var shellCommandName = nameof(ShellShimManagerTests) + Path.GetRandomFileName();
             var cleanFolderUnderTempRoot = GetNewCleanFolderUnderTempRoot();
             MakeNameConflictingCommand(cleanFolderUnderTempRoot, shellCommandName);
 
-            IShellShimMaker shellShimMaker;
+            IShellShimManager shellShimManager;
             if (testMockBehaviorIsInSync)
             {
-                shellShimMaker = new ShellShimMakerMock(cleanFolderUnderTempRoot);
+                shellShimManager = new ShellShimManagerMock(new DirectoryPath(cleanFolderUnderTempRoot));
             }
             else
             {
-                shellShimMaker = new ShellShimMaker(cleanFolderUnderTempRoot);
+                shellShimManager = new ShellShimManager(new DirectoryPath(cleanFolderUnderTempRoot));
             }
 
-            Action a = () => shellShimMaker.EnsureCommandNameUniqueness(shellCommandName);
-            a.ShouldThrow<GracefulException>()
-                .And.Message
-                .Should().Contain(
-                    string.Format(CommonLocalizableStrings.FailInstallToolSameName, shellCommandName));
+            shellShimManager.ShimExists(shellCommandName).Should().Be(true);
         }
 
         [Theory]
@@ -161,31 +153,31 @@ namespace Microsoft.DotNet.ShellShim.Tests
         [InlineData(true)]
         public void GivenAnExecutablePathWithExistingSameNameShimItRollsBack(bool testMockBehaviorIsInSync)
         {
-            var shellCommandName = nameof(ShellShimMakerTests) + Path.GetRandomFileName();
+            var shellCommandName = nameof(ShellShimManagerTests) + Path.GetRandomFileName();
 
             var pathToShim = GetNewCleanFolderUnderTempRoot();
             MakeNameConflictingCommand(pathToShim, shellCommandName);
 
-            IShellShimMaker shellShimMaker;
+            IShellShimManager shellShimManager;
             if (testMockBehaviorIsInSync)
             {
-                shellShimMaker = new ShellShimMakerMock(pathToShim);
+                shellShimManager = new ShellShimManagerMock(new DirectoryPath(pathToShim));
             }
             else
             {
-                shellShimMaker = new ShellShimMaker(pathToShim);
+                shellShimManager = new ShellShimManager(new DirectoryPath(pathToShim));
             }
 
             Action a = () =>
             {
                 using (var t = new TransactionScope())
                 {
-                    shellShimMaker.CreateShim(new FilePath("dummy.dll"), shellCommandName);
+                    shellShimManager.CreateShim(new FilePath("dummy.dll"), shellCommandName);
 
                     t.Complete();
                 }
             };
-            a.ShouldThrow<GracefulException>();
+            a.ShouldThrow<ShellShimException>();
 
             Directory.GetFiles(pathToShim).Should().HaveCount(1, "there is only intent conflicted command");
         }
@@ -195,33 +187,33 @@ namespace Microsoft.DotNet.ShellShim.Tests
         [InlineData(true)]
         public void GivenAnExecutablePathErrorHappensItRollsBack(bool testMockBehaviorIsInSync)
         {
-            var shellCommandName = nameof(ShellShimMakerTests) + Path.GetRandomFileName();
+            var shellCommandName = nameof(ShellShimManagerTests) + Path.GetRandomFileName();
 
             var pathToShim = GetNewCleanFolderUnderTempRoot();
 
-            IShellShimMaker shellShimMaker;
+            IShellShimManager shellShimManager;
             if (testMockBehaviorIsInSync)
             {
-                shellShimMaker = new ShellShimMakerMock(pathToShim);
+                shellShimManager = new ShellShimManagerMock(new DirectoryPath(pathToShim));
             }
             else
             {
-                shellShimMaker = new ShellShimMaker(pathToShim);
+                shellShimManager = new ShellShimManager(new DirectoryPath(pathToShim));
             }
                
-            Action intendedError = () => throw new PackageObtainException();
+            Action intendedError = () => throw new ToolPackageException();
 
             Action a = () =>
             {
                 using (var t = new TransactionScope())
                 {
-                    shellShimMaker.CreateShim(new FilePath("dummy.dll"), shellCommandName);
+                    shellShimManager.CreateShim(new FilePath("dummy.dll"), shellCommandName);
 
                     intendedError();
                     t.Complete();
                 }
             };
-            a.ShouldThrow<PackageObtainException>();
+            a.ShouldThrow<ToolPackageException>();
 
             Directory.GetFiles(pathToShim).Should().BeEmpty();
         }
@@ -229,23 +221,139 @@ namespace Microsoft.DotNet.ShellShim.Tests
         [Theory]
         [InlineData(false)]
         [InlineData(true)]
-        public void GivenAnExecutablePathWithoutExistingSameNameShimItShouldNotThrow(bool testMockBehaviorIsInSync)
+        public void GivenANonexistentShimItReportsItDoesNotExist(bool testMockBehaviorIsInSync)
         {
-            var shellCommandName = nameof(ShellShimMakerTests) + Path.GetRandomFileName();
+            var shellCommandName = nameof(ShellShimManagerTests) + Path.GetRandomFileName();
             var cleanFolderUnderTempRoot = GetNewCleanFolderUnderTempRoot();
 
-            IShellShimMaker shellShimMaker;
+            IShellShimManager shellShimManager;
             if (testMockBehaviorIsInSync)
             {
-                shellShimMaker = new ShellShimMakerMock(cleanFolderUnderTempRoot);
+                shellShimManager = new ShellShimManagerMock(new DirectoryPath(cleanFolderUnderTempRoot));
             }
             else
             {
-                shellShimMaker = new ShellShimMaker(cleanFolderUnderTempRoot);
+                shellShimManager = new ShellShimManager(new DirectoryPath(cleanFolderUnderTempRoot));
             }
 
-            Action a = () => shellShimMaker.EnsureCommandNameUniqueness(shellCommandName);
-            a.ShouldNotThrow();
+            shellShimManager.ShimExists(shellCommandName).Should().Be(false);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void GivenANonexistentShimRemoveDoesNotThrow(bool testMockBehaviorIsInSync)
+        {
+            var shellCommandName = nameof(ShellShimManagerTests) + Path.GetRandomFileName();
+            var cleanFolderUnderTempRoot = GetNewCleanFolderUnderTempRoot();
+
+            IShellShimManager shellShimManager;
+            if (testMockBehaviorIsInSync)
+            {
+                shellShimManager = new ShellShimManagerMock(new DirectoryPath(cleanFolderUnderTempRoot));
+            }
+            else
+            {
+                shellShimManager = new ShellShimManager(new DirectoryPath(cleanFolderUnderTempRoot));
+            }
+
+            shellShimManager.ShimExists(shellCommandName).Should().Be(false);
+
+            shellShimManager.RemoveShim(shellCommandName);
+
+            shellShimManager.ShimExists(shellCommandName).Should().Be(false);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void GivenAnInstalledShimRemoveDeletesTheShimFiles(bool testMockBehaviorIsInSync)
+        {
+            var shellCommandName = nameof(ShellShimManagerTests) + Path.GetRandomFileName();
+            var cleanFolderUnderTempRoot = GetNewCleanFolderUnderTempRoot();
+
+            IShellShimManager shellShimManager;
+            if (testMockBehaviorIsInSync)
+            {
+                shellShimManager = new ShellShimManagerMock(new DirectoryPath(cleanFolderUnderTempRoot));
+            }
+            else
+            {
+                shellShimManager = new ShellShimManager(new DirectoryPath(cleanFolderUnderTempRoot));
+            }
+
+            shellShimManager.ShimExists(shellCommandName).Should().Be(false);
+
+            shellShimManager.CreateShim(new FilePath("dummy.dll"), shellCommandName);
+            shellShimManager.ShimExists(shellCommandName).Should().Be(true);
+
+            shellShimManager.RemoveShim(shellCommandName);
+            shellShimManager.ShimExists(shellCommandName).Should().Be(false);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void GivenAnInstalledShimRemoveRollsbackIfTransactionIsAborted(bool testMockBehaviorIsInSync)
+        {
+            var shellCommandName = nameof(ShellShimManagerTests) + Path.GetRandomFileName();
+            var cleanFolderUnderTempRoot = GetNewCleanFolderUnderTempRoot();
+
+            IShellShimManager shellShimManager;
+            if (testMockBehaviorIsInSync)
+            {
+                shellShimManager = new ShellShimManagerMock(new DirectoryPath(cleanFolderUnderTempRoot));
+            }
+            else
+            {
+                shellShimManager = new ShellShimManager(new DirectoryPath(cleanFolderUnderTempRoot));
+            }
+
+            shellShimManager.ShimExists(shellCommandName).Should().Be(false);
+
+            shellShimManager.CreateShim(new FilePath("dummy.dll"), shellCommandName);
+            shellShimManager.ShimExists(shellCommandName).Should().Be(true);
+
+            using (var scope = new TransactionScope())
+            {
+                shellShimManager.RemoveShim(shellCommandName);
+                shellShimManager.ShimExists(shellCommandName).Should().Be(false);
+            }
+
+            shellShimManager.ShimExists(shellCommandName).Should().Be(true);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void GivenAnInstalledShimRemoveCommitsIfTransactionIsCompleted(bool testMockBehaviorIsInSync)
+        {
+            var shellCommandName = nameof(ShellShimManagerTests) + Path.GetRandomFileName();
+            var cleanFolderUnderTempRoot = GetNewCleanFolderUnderTempRoot();
+
+            IShellShimManager shellShimManager;
+            if (testMockBehaviorIsInSync)
+            {
+                shellShimManager = new ShellShimManagerMock(new DirectoryPath(cleanFolderUnderTempRoot));
+            }
+            else
+            {
+                shellShimManager = new ShellShimManager(new DirectoryPath(cleanFolderUnderTempRoot));
+            }
+
+            shellShimManager.ShimExists(shellCommandName).Should().Be(false);
+
+            shellShimManager.CreateShim(new FilePath("dummy.dll"), shellCommandName);
+            shellShimManager.ShimExists(shellCommandName).Should().Be(true);
+
+            using (var scope = new TransactionScope())
+            {
+                shellShimManager.RemoveShim(shellCommandName);
+                shellShimManager.ShimExists(shellCommandName).Should().Be(false);
+                scope.Complete();
+            }
+
+            shellShimManager.ShimExists(shellCommandName).Should().Be(false);
         }
 
         private static void MakeNameConflictingCommand(string pathToPlaceShim, string shellCommandName)

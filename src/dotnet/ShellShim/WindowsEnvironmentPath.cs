@@ -71,7 +71,7 @@ namespace Microsoft.DotNet.ShellShim
                     _reporter.WriteLine(
                         string.Format(
                             CommonLocalizableStrings.EnvironmentPathWindowsManualInstruction,
-                            _packageExecutablePath, _packageExecutablePath));
+                            _packageExecutablePath));
                 }
             }
         }

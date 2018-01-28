@@ -6,11 +6,10 @@ using System.Collections.Generic;
 using Microsoft.DotNet.Cli;
 using Microsoft.DotNet.Cli.Utils;
 using Microsoft.DotNet.Tools;
-using Microsoft.DotNet.ToolPackage;
 using Microsoft.DotNet.PlatformAbstractions;
 using Microsoft.Extensions.EnvironmentAbstractions;
 
-namespace Microsoft.DotNet.Tools.Install.Tool
+namespace Microsoft.DotNet.ToolPackage
 {
     internal class ProjectRestorer : IProjectRestorer
     {
@@ -65,7 +64,7 @@ namespace Microsoft.DotNet.Tools.Install.Tool
             var result = command.Execute();
             if (result.ExitCode != 0)
             {
-                throw new PackageObtainException(LocalizableStrings.ToolInstallationRestoreFailed);
+                throw new ToolPackageException(CommonLocalizableStrings.ToolInstallationRestoreFailed);
             }
         }
 

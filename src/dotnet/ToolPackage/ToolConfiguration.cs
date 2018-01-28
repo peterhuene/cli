@@ -10,9 +10,7 @@ namespace Microsoft.DotNet.ToolPackage
 {
     internal class ToolConfiguration
     {
-        public ToolConfiguration(
-            string commandName,
-            string toolAssemblyEntryPoint)
+        public ToolConfiguration(string commandName, string toolAssemblyEntryPoint)
         {
             if (string.IsNullOrWhiteSpace(commandName))
             {
@@ -48,5 +46,6 @@ namespace Microsoft.DotNet.ToolPackage
 
         public string CommandName { get; }
         public string ToolAssemblyEntryPoint { get; }
+        public string ToolExecutablePath { get; set; }
     }
 }
